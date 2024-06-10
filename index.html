@@ -1,0 +1,327 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Locate the nearest health facility</title>
+
+  <style>
+    html, body, #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+    .box {
+      color: white;
+      text-align: center;
+      font-size: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      flex-wrap: wrap;
+      z-index: 1001;
+    }
+    .box h2 {
+      max-width: 100%;
+      color: #03A9F4;
+    }
+
+    @media(max-width: 575px) {
+    .box h2{
+      font-size: 24px;
+    }}
+    .overlay {
+      z-index: 1000;
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      transition: 0.5s;
+    }
+    .text {
+        max-width: 100%;
+        display: block;
+        margin-bottom: 20px;
+    }
+    @media(max-width: 575px) {
+        .text{
+            font-size: 16px;
+        }
+    }
+    .show {
+        padding: 8px 15px;
+        background-color: aqua;
+        border-radius: 8px;
+        cursor: pointer;
+        width: fit-content;
+        font-size: 20px;
+        background-color: #ff5722;
+    }
+    @media(max-width: 575px) {
+        .show {
+            font-size: 16px;
+        }
+    }
+    .loading-gif {
+        /* max-width: 500px; */
+        width: 100px;
+        height: 100px;
+    }
+    pre {
+      background: #f3f3f3;
+      overflow: auto;
+      padding: 1rem;
+    }
+    .pre-loader {
+        position: fixed;
+        z-index: 1003; /** make sure this is the highest value compared to all other divs **/
+        top: 0;
+        left: 0;
+        background: #191f26;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+    }
+    .pre-loader.hidden {
+        animation: fadeOut 1s; /** change to 1s */
+        animation-fill-mode: forwards;
+    }
+    @keyframes fadeOut {
+        100% {
+            opacity: 0;
+            visibility: hidden;
+        }
+    }
+  </style>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.29/esri/themes/light/main.css">
+  <script src="https://js.arcgis.com/4.29"></script>
+
+  <script>
+    require([
+      "esri/config",
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/Graphic",
+      "esri/layers/GraphicsLayer",
+      "esri/rest/closestFacility",
+      "esri/rest/support/ClosestFacilityParameters",
+      "esri/rest/support/FeatureSet",
+      "esri/symbols/Symbol",
+    ], function (
+      esriConfig,
+      Map,
+      MapView,
+      Graphic,
+      GraphicsLayer,
+      closestFacility,
+      ClosestFacilityParameters,
+      FeatureSet,
+      Symbol
+    ) {
+      esriConfig.apiKey = "AAPK519ca473586b4f93a38d8170f89d1169fXHppYI6xPCaZWrYOlDPk6i3Sjr0bu9hakuauG9QBd6TeeQWevCk5Le3pdJXe9n6";
+
+      const routeSymbol = {
+        type: "simple-line",
+        color: [50, 150, 255, 0.75],
+        width: "5",
+      };
+
+      const facilities = [
+        [31.295, 29.911],
+        [31.294, 29.903],
+        [31.301, 29.906],
+        [31.314, 29.847],
+        [31.299, 29.843],
+        [31.31, 29.839],
+        [31.307, 29.837],
+        [31.308, 29.816],
+        [31.342, 29.851],
+        [31.339, 29.855],
+        [31.317, 29.847],
+        [31.32, 29.859],
+        [31.336, 29.854],
+        [31.339, 29.853],
+        [31.328, 29.848],
+        [31.328, 29.843],
+        [31.321, 29.844],
+        [31.332, 29.846],
+        [31.333, 29.846],
+        [31.322, 29.844],
+        [31.342, 29.847],
+        [31.34, 29.846],
+        [31.336, 29.84],
+        [31.343, 29.839],
+        [31.339, 29.836],
+        [31.352, 29.834],
+        [31.306, 29.814],
+        [31.356, 29.869],
+        [31.34, 29.841],
+        [31.324, 29.84],
+        [31.33, 29.843],
+        [31.331, 29.843],
+        [31.343, 29.841],
+        [31.307, 29.866],
+        [31.313, 29.799],
+        [31.336, 29.834],
+        [31.347, 29.826],
+        [31.314, 29.859],
+        [31.303, 29.89],
+        [31.311, 29.815],
+        [31.329, 29.843],
+        [31.305, 29.895],
+        [31.292, 29.873],
+        [31.303, 29.891],
+        [31.289, 29.908],
+        [31.334, 29.847],
+        [31.329, 29.848],
+      ];
+
+      const routesLayer = new GraphicsLayer();
+      const facilitiesLayer = new GraphicsLayer();
+
+      const map = new Map({
+        basemap: "arcgis-streets",
+        layers: [routesLayer, facilitiesLayer],
+      });
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [31.3074470, 29.8531851],
+        zoom: 14,
+        constraints: {
+          snapToZoom: false
+        }
+      });
+
+      view.popup.actions = [];
+
+      view.when(() => {
+        addFacilityGraphics();
+        findClosestFacility(addStartGraphic(view.center), facilitiesLayer.graphics);
+      });
+
+      view.on("click", (event) => {
+        view.hitTest(event).then((response) => {
+          if (response.results.length === 1) {
+            findClosestFacility(
+              addStartGraphic(event.mapPoint),
+              facilitiesLayer.graphics
+            );
+          }
+        });
+      });
+
+
+      function findClosestFacility(startFeature, facilityFeatures) {
+
+        const params = new ClosestFacilityParameters({
+          incidents: new FeatureSet({
+            features: [startFeature],
+          }),
+          facilities: new FeatureSet({
+            features: facilityFeatures.toArray(),
+          }),
+          returnRoutes: true,
+          returnFacilities: true,
+          defaultTargetFacilityCount: 1,
+        });
+
+        const url = "https://route-api.arcgis.com/arcgis/rest/services/World/ClosestFacility/NAServer/ClosestFacility_World";
+
+        closestFacility.solve(url, params).then(
+          (results) => {
+            showRoutes(results.routes);
+          },
+          (error) => {
+            console.log(error.details);
+          }
+        );
+      }
+
+
+      function addStartGraphic(point) {
+        view.graphics.removeAll();
+        const graphic = new Graphic({
+          symbol: {
+            type: "simple-marker",
+            color: [255, 255, 255, 1.0],
+            size: 8,
+            outline: {
+              color: [50, 50, 50],
+              width: 1,
+            },
+          },
+          geometry: point,
+        });
+        view.graphics.add(graphic);
+        return graphic;
+      }
+
+      function addFacilityGraphics() {
+        facilities.forEach((point) => {
+          facilitiesLayer.graphics.add(
+            new Graphic({
+              symbol: {
+                type: "web-style",
+                name: "hospital",
+                styleName: "Esri2DPointSymbolsStyle",
+              },
+              geometry: {
+                type: "point",
+                longitude: point[0],
+                latitude: point[1],
+                spatialReference: view.spatialReference,
+              },
+            })
+          );
+        });
+      }
+
+      function showRoutes(routes) {
+        // Show the routes to the closest facilities
+        routesLayer.removeAll();
+        routes.features.forEach((route, i) => {
+          route.symbol = routeSymbol;
+          routesLayer.add(route);
+        });
+      }
+    });
+  </script>
+</head>
+
+<body>
+  <div class='pre-loader'>
+    <img class='loading-gif' alt='loading' src="https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3RwYzVpN3EyZXk0dDVnMGt0ZjZidjhsazhzZ3I3aWVpYmxyYm82OSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/lnsTFyT6wUzItXsUV5/giphy.gif"/>
+</div>
+<div class="box">
+    <h2>Locate the nearest health facility</h2>
+    <div class="text">Determine the best route to the nearest health center in Helwan for rapid response to emergency health cases</div>
+    <div class="show">Use the App</div>
+</div>
+<div class="overlay">
+</div>
+
+  <div id="viewDiv"></div>
+
+<script type='text/javascript'>
+    window.addEventListener('load', function () {
+        document.querySelector('.pre-loader').className += ' hidden';
+    });
+</script>
+
+<script>
+  document.querySelector(".show").addEventListener('click', function(){
+      document.querySelector(".overlay").style.display = "none";
+      document.querySelector(".box").style.display = "none";
+  })
+</script>
+</body>
+</html>
